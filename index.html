@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pulse Board</title>
+<meta name="description" content="One-tap launcher for Mike's live Pulse Board.">
+<meta name="theme-color" content="#007D8D">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pulse Board">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://claude.ai">
+<style>
+  :root {
+    /* Elevate "Origami" tokens, matched to the live board */
+    --brand-primary: #007D8D; --brand-primary-90: rgba(0,125,141,.9); --brand-primary-10: rgba(0,125,141,.1);
+    --brand-secondary: #C445A0;
+    --gradient-logo: linear-gradient(135deg, #F1563C 0%, #D34F7A 38%, #8B56CC 68%, #3272D9 100%);
+    --surface-layout: #F5F7FA; --surface-card: #FFFFFF;
+    --text-primary: #000000; --text-secondary: #59606D; --text-faint: #727A88;
+    --border: #C9D1DF; --warning-10: #FFF9DB; --warning-ink: #8A6300;
+    --shadow-tile: 0 8px 32px rgba(52,56,63,.08);
+    --focus: 0 0 0 3px var(--brand-primary-10), inset 0 0 0 1px var(--brand-primary);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --surface-layout: #1B1F23; --surface-card: #272C31; --text-primary: #FFFFFF;
+      --text-secondary: #B1BACA; --text-faint: #9099A9; --border: #444A53;
+      --warning-10: #3a3212; --warning-ink: #FCC419; --shadow-tile: 0 8px 32px rgba(0,0,0,.5); }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--surface-layout); color: var(--text-primary);
+    font: 15px/1.5 "Open Sans", "Segoe UI", Roboto, -apple-system, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  }
+  .card {
+    width: 100%; max-width: 400px; background: var(--surface-card); border-radius: 24px;
+    box-shadow: var(--shadow-tile); padding: 32px 24px 24px; text-align: center;
+  }
+  .mark { width: 88px; height: 88px; border-radius: 22px; margin: 0 auto 18px; display: block; box-shadow: 0 10px 28px rgba(139,86,204,.35); }
+  h1 { font-family: Poppins, "Helvetica Neue", Arial, sans-serif; font-weight: 600; font-size: 26px; margin: 0; letter-spacing: -.01em; }
+  h1 .dot { color: var(--brand-secondary); }
+  .who { color: var(--text-faint); font-size: 12px; margin-top: 4px; }
+  .quote { color: var(--text-secondary); font-style: italic; font-size: 14px; margin: 20px 4px 24px; min-height: 42px; }
+  .quote span { opacity: .72; font-style: normal; white-space: nowrap; }
+  .btn {
+    display: block; width: 100%; border: none; border-radius: 12px; cursor: pointer;
+    background: var(--brand-primary); color: #fff; font: 600 16px Poppins, "Helvetica Neue", Arial, sans-serif;
+    padding: 15px 18px; text-decoration: none; transition: background 150ms ease;
+  }
+  .btn:hover { background: var(--brand-primary-90); }
+  .btn:focus-visible { outline: none; box-shadow: var(--focus); }
+  .status { font-size: 12px; color: var(--text-faint); margin-top: 12px; min-height: 18px; }
+  .status.offline { color: var(--warning-ink); background: var(--warning-10); border-radius: 999px; padding: 4px 12px; display: inline-block; }
+  .opts { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 18px; font-size: 13px; color: var(--text-secondary); }
+  .opts input { width: 17px; height: 17px; accent-color: var(--brand-primary); }
+  .install {
+    margin-top: 20px; padding: 12px 14px; border-radius: 12px; font-size: 13px; text-align: left;
+    background: var(--brand-primary-10); color: var(--text-primary);
+  }
+  .install strong { color: var(--brand-primary); }
+  .install .btn { margin-top: 10px; padding: 10px; font-size: 14px; }
+  [hidden] { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main class="card">
+  <img class="mark" src="icons/icon-192.png" alt="">
+  <h1>Mike<span class="dot">'</span>s Pulse Board</h1>
+  <div class="who">CPD Lead &amp; TSG Custom</div>
+  <p class="quote" id="quote"></p>
+
+  <a class="btn" id="open" href="#" rel="noopener">Open Pulse Board</a>
+  <div><span class="status" id="status"></span></div>
+
+  <label class="opts"><input type="checkbox" id="auto"> Open the board automatically on launch</label>
+
+  <div class="install" id="install-ios" hidden>
+    <strong>Install on iPhone:</strong> tap the Share button in Safari, then <strong>Add to Home Screen</strong>.
+  </div>
+  <div class="install" id="install-prompt" hidden>
+    <strong>Install Pulse Board</strong> as an app on this device.
+    <button class="btn" id="install-btn">Install</button>
+  </div>
+</main>
+
+<script>
+(function () {
+  // ---- The one setting that matters: where the live board lives ----------
+  var BOARD_URL = 'https://claude.ai/artifact/Ct6ML5TLf26oUFJDT8Ju81';
+
+  var openBtn = document.getElementById('open');
+  var statusEl = document.getElementById('status');
+  var autoBox = document.getElementById('auto');
+  openBtn.href = BOARD_URL;
+
+  function store(fn, fallback) { try { return fn(); } catch (e) { return fallback; } }
+  var standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+  // Daily quote — same rotation as the board, so launcher and board agree.
+  var QUOTES = [
+    ["The way to get started is to quit talking and begin doing.", "Walt Disney"],
+    ["It always seems impossible until it's done.", "Nelson Mandela"],
+    ["Do what you can, with what you have, where you are.", "Theodore Roosevelt"],
+    ["Well done is better than well said.", "Benjamin Franklin"],
+    ["The secret of getting ahead is getting started.", "Mark Twain"],
+    ["Quality means doing it right when no one is looking.", "Henry Ford"],
+    ["You miss 100% of the shots you don't take.", "Wayne Gretzky"],
+    ["Whether you think you can or you think you can't, you're right.", "Henry Ford"],
+    ["The only way to do great work is to love what you do.", "Steve Jobs"],
+    ["A goal is a dream with a deadline.", "Napoleon Hill"],
+    ["Success is the sum of small efforts, repeated day in and day out.", "Robert Collier"],
+    ["Action is the foundational key to all success.", "Pablo Picasso"],
+    ["Progress is impossible without change.", "George Bernard Shaw"],
+    ["You don't have to be great to start, but you have to start to be great.", "Zig Ziglar"],
+    ["Perseverance is not a long race; it is many short races one after another.", "Walter Elliot"],
+    ["Small daily improvements are the key to staggering long-term results.", "Robin Sharma"],
+    ["The best way to predict the future is to create it.", "Peter Drucker"],
+    ["Efficiency is doing things right; effectiveness is doing the right things.", "Peter Drucker"],
+    ["Management is doing things right; leadership is doing the right things.", "Peter Drucker"],
+    ["What gets measured gets managed.", "Peter Drucker"],
+    ["The most difficult thing is the decision to act; the rest is merely tenacity.", "Amelia Earhart"],
+    ["Motivation is what gets you started. Habit is what keeps you going.", "Jim Ryun"],
+    ["Discipline is the bridge between goals and accomplishment.", "Jim Rohn"],
+    ["We are what we repeatedly do. Excellence, then, is not an act, but a habit.", "Will Durant"],
+    ["Difficulties strengthen the mind, as labor does the body.", "Seneca"],
+    ["He who has a why to live can bear almost any how.", "Friedrich Nietzsche"],
+    ["Out of clutter, find simplicity.", "Albert Einstein"],
+    ["In the middle of difficulty lies opportunity.", "Albert Einstein"],
+    ["Once you replace negative thoughts with positive ones, you'll start having positive results.", "Willie Nelson"],
+    ["Opportunities don't happen. You create them.", "Chris Grosser"],
+    ["Believe you can and you're halfway there.", "Theodore Roosevelt"],
+    ["Nothing worth having comes easy.", "Theodore Roosevelt"],
+    ["The harder the conflict, the more glorious the triumph.", "Thomas Paine"],
+    ["It does not matter how slowly you go as long as you do not stop.", "Confucius"],
+    ["The journey of a thousand miles begins with a single step.", "Lao Tzu"],
+    ["Fall seven times, stand up eight.", "Japanese proverb"],
+    ["Clear thinking, plainly stated, is the beginning of good work.", "Anonymous"],
+    ["Plans are nothing; planning is everything.", "Dwight D. Eisenhower"],
+    ["Leadership is the capacity to translate vision into reality.", "Warren Bennis"],
+    ["Management is nothing more than motivating other people.", "Lee Iacocca"],
+    ["The pessimist sees difficulty in every opportunity; the optimist sees opportunity in every difficulty.", "Winston Churchill"],
+    ["Success is not final, failure is not fatal: it is the courage to continue that counts.", "Winston Churchill"],
+    ["Never let the fear of striking out keep you from playing the game.", "Babe Ruth"],
+    ["Character is doing the right thing when nobody's looking.", "J.C. Watts"],
+    ["Integrity is doing the right thing, even when no one is watching.", "C.S. Lewis"],
+    ["You can't build a reputation on what you are going to do.", "Henry Ford"],
+    ["The strength of the team is each individual member; the strength of each member is the team.", "Phil Jackson"],
+    ["Alone we can do so little; together we can do so much.", "Helen Keller"],
+    ["None of us is as smart as all of us.", "Ken Blanchard"],
+    ["Great things in business are never done by one person.", "Steve Jobs"],
+    ["Innovation distinguishes between a leader and a follower.", "Steve Jobs"],
+    ["Simplicity is the ultimate sophistication.", "Leonardo da Vinci"],
+    ["First, solve the problem. Then, write the code.", "John Johnson"],
+    ["Make it work, make it right, make it fast.", "Kent Beck"],
+    ["The best error message is the one that never shows up.", "Thomas Fuchs"],
+    ["Testing leads to failure, and failure leads to understanding.", "Burt Rutan"],
+    ["If you want to go fast, go alone. If you want to go far, go together.", "African proverb"],
+    ["A ship in harbor is safe, but that is not what ships are built for.", "John A. Shedd"],
+    ["Start where you are. Use what you have. Do what you can.", "Arthur Ashe"]
+  ];
+  var now = new Date();
+  var doy = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+  var q = QUOTES[doy % QUOTES.length];
+  var qEl = document.getElementById('quote');
+  qEl.textContent = '“' + q[0] + '” ';
+  var by = document.createElement('span'); by.textContent = '— ' + q[1]; qEl.appendChild(by);
+
+  // Online / offline state
+  function renderStatus() {
+    if (navigator.onLine === false) {
+      statusEl.className = 'status offline';
+      statusEl.textContent = "You're offline. The board will open once you're back online.";
+    } else {
+      statusEl.className = 'status';
+      statusEl.textContent = standalone ? 'Opens your live board on claude.ai' : '';
+    }
+  }
+  window.addEventListener('online', renderStatus);
+  window.addEventListener('offline', renderStatus);
+  renderStatus();
+
+  function go() {
+    if (navigator.onLine === false) { renderStatus(); return; }
+    store(function () { sessionStorage.setItem('pulse-launched', '1'); });
+    statusEl.className = 'status'; statusEl.textContent = 'Opening your board…';
+    window.location.href = BOARD_URL;
+  }
+  openBtn.addEventListener('click', function (e) { e.preventDefault(); go(); });
+
+  // Auto-open: on by default when installed. Only fires on a fresh launch —
+  // coming back to the launcher (back button / app switch) shows the button
+  // instead, so you never get bounced in a loop.
+  var autoPref = store(function () { return localStorage.getItem('pulse-auto'); }, null);
+  autoBox.checked = autoPref === null ? standalone : autoPref === '1';
+  autoBox.addEventListener('change', function () {
+    store(function () { localStorage.setItem('pulse-auto', autoBox.checked ? '1' : '0'); });
+  });
+  var params = new URLSearchParams(location.search);
+  var alreadyLaunched = store(function () { return sessionStorage.getItem('pulse-launched') === '1'; }, false);
+  if (params.get('go') === '1' || (autoBox.checked && !alreadyLaunched)) {
+    setTimeout(go, 700); // brief splash so the quote is visible
+  }
+  window.addEventListener('pageshow', function (e) { if (e.persisted) renderStatus(); });
+
+  // Install helpers (only shown when running in a normal browser tab)
+  if (!standalone) {
+    var ua = navigator.userAgent;
+    var isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (isIOS) document.getElementById('install-ios').hidden = false;
+    var deferred = null;
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault(); deferred = e;
+      document.getElementById('install-prompt').hidden = false;
+    });
+    document.getElementById('install-btn').addEventListener('click', function () {
+      if (!deferred) return;
+      deferred.prompt();
+      deferred.userChoice.finally(function () { deferred = null; document.getElementById('install-prompt').hidden = true; });
+    });
+  }
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+  }
+})();
+</script>
+</body>
+</html>
